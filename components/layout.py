@@ -25,6 +25,12 @@ graph_types = [
     {'label': 'Комбинированная', 'value': 'combo'},
 ]
 
+ai_analysis_types = [
+    {'label': 'Обнаружение аномалий', 'value': 'anomaly'},
+    {'label': 'Прогнозирование', 'value': 'forecast'},
+    {'label': 'Кластеризация', 'value': 'cluster'}
+]
+
 
 def create_layout():
     return html.Div([
@@ -68,6 +74,24 @@ def create_layout():
             placeholder="Ось Z (для 3D)",
             style={'width': '100%', 'margin': '10px 0'}
         ),
+
+        dcc.Store(id='stored-data'),
+
+        dcc.Dropdown(
+            id='anomaly-column',
+            placeholder="Выберите колонку для анализа аномалий"
+        ),
+
+        html.Div([
+            dcc.Dropdown(
+                id='ai-analysis-type',
+                options=ai_analysis_types,
+                placeholder="Выберите AI-анализ"
+            ),
+            html.Button('Применить AI', id='apply-ai-button')
+        ], style={'margin': '20px 0'}),
+
+        html.Div(id='ai-analysis-output'),
 
         dcc.Graph(
             id='graph',

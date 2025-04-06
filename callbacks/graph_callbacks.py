@@ -2,25 +2,58 @@ import dash
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash.dependencies import Input, Output
+from dash import dcc, html
+from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from utils.data_processing import process_uploaded_file
+from utils.data_processing import process_uploaded_file, detect_anomalies, forecast_time_series, cluster_data
 
 
 def register_graph_callbacks(app):
     """
     Регистрирует все callback'ы, связанные с построением графиков, в Dash приложении.
-
-    Args:
-        app (dash.Dash): Экземпляр Dash приложения, к которому будут добавлены callback'ы
-
-    Callbacks:
-        Регистрирует основной callback, который:
-        1. Обрабатывает выбор типа графика и осей
-        2. Строит соответствующий график с помощью Plotly
-        3. Управляет отображением уведомлений об ошибках
     """
+
+    @app.callback(
+        Output('ai-analysis-output', 'children'),
+        [Input('apply-ai-button', 'n_clicks')],
+        [State('ai-analysis-type', 'value'),
+         State('anomaly-column', 'value'),
+         State('stored-data', 'data')]
+    )
+    def apply_ai_analysis(n_clicks, analysis_type, column, stored_data):
+        if not n_clicks or not stored_data:
+            raise PreventUpdate
+
+        try:
+            df = pd.DataFrame.from_dict(stored_data)
+
+            if analysis_type == 'anomaly':
+                if not column:
+                    numeric_cols = df.select_dtypes(include=['number']).columns
+                    if not numeric_cols.empty:
+                        column = numeric_cols[0]
+                    else:
+                        return "Нет числовых колонок для анализа"
+
+                df = detect_anomalies(df, column)
+                return dcc.Graph(
+                    figure=px.scatter(df, x=df.index, y=column, color='anomaly',
+                                      title='Анализ аномалий')
+                )
+
+        except Exception as e:
+            return html.Div(f"Ошибка: {str(e)}", style={'color': 'red'})
+
+    @app.callback(
+        Output('anomaly-column-selector', 'options'),
+        [Input('stored-data', 'data')]
+    )
+    def update_columns(data):
+        if not data:
+            raise PreventUpdate
+        df = pd.DataFrame.from_dict(data)
+        return [{'label': col, 'value': col} for col in df.select_dtypes(include=['number']).columns]
 
     @app.callback(
         [Output('graph', 'figure'),
@@ -35,23 +68,9 @@ def register_graph_callbacks(app):
          Input('close-notification', 'n_clicks')],
         prevent_initial_call=True
     )
-    def update_graph(graph_type, x_axis, y_axis, z_axis, contents):
+    def update_graph(graph_type, x_axis, y_axis, z_axis, contents, n_clicks):
         """
         Основной callback для построения графиков и обработки взаимодействий.
-
-        Args:
-            graph_type (str): Тип графика из выпадающего списка
-            x_axis (str): Выбранная колонка для оси X
-            y_axis (str): Выбранная колонка для оси Y
-            z_axis (str): Выбранная колонка для оси Z (для 3D графиков)
-            contents (str): Содержимое загруженного файла в base64
-
-        Returns:
-            tuple: Кортеж из 4 элементов:
-                - figure: Объект графика Plotly
-                - str: Текст уведомления об ошибке (или None)
-                - dict: Стили для уведомления
-                - dict: Стили для кнопки закрытия уведомления
         """
         ctx = dash.callback_context
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
