@@ -2,25 +2,50 @@ import dash
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash.dependencies import Input, Output
+from dash import dcc
+from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
-from utils.data_processing import process_uploaded_file
+from utils.data_processing import process_uploaded_file, detect_anomalies, forecast_time_series, cluster_data
 
 
 def register_graph_callbacks(app):
     """
     Регистрирует все callback'ы, связанные с построением графиков, в Dash приложении.
-
-    Args:
-        app (dash.Dash): Экземпляр Dash приложения, к которому будут добавлены callback'ы
-
-    Callbacks:
-        Регистрирует основной callback, который:
-        1. Обрабатывает выбор типа графика и осей
-        2. Строит соответствующий график с помощью Plotly
-        3. Управляет отображением уведомлений об ошибках
     """
+
+    @app.callback(
+        Output('ai-analysis-output', 'children'),
+        [Input('apply-ai-button', 'n_clicks')],
+        [State('ai-analysis-type', 'value'),
+         State('anomaly-column', 'value'),
+         State('upload-data', 'contents')]
+    )
+    def apply_ai_analysis(n_clicks, analysis_type, contents, column):
+        if n_clicks is None:
+            raise PreventUpdate
+
+        df = process_uploaded_file(contents)
+
+        if analysis_type == 'anomaly':
+            df = detect_anomalies(df, column)
+            return dcc.Graph(
+                figure=px.scatter(df, x='date', y='value', color='anomaly',
+                                  title='Аномалии в данных')
+            )
+
+        elif analysis_type == 'forecast':
+            forecast = forecast_time_series(df, 'date', 'value')
+            fig = px.line(forecast, x='ds', y='yhat', title='Прогноз')
+            fig.add_scatter(x=df['date'], y=df['value'], name='Факт')
+            return dcc.Graph(figure=fig)
+
+        elif analysis_type == 'cluster':
+            df = cluster_data(df)
+            return dcc.Graph(
+                figure=px.scatter(df, x='x_col', y='y_col', color='cluster',
+                                  title='Кластеризация данных')
+            )
 
     @app.callback(
         [Output('graph', 'figure'),
@@ -35,23 +60,9 @@ def register_graph_callbacks(app):
          Input('close-notification', 'n_clicks')],
         prevent_initial_call=True
     )
-    def update_graph(graph_type, x_axis, y_axis, z_axis, contents):
+    def update_graph(graph_type, x_axis, y_axis, z_axis, contents, n_clicks):
         """
         Основной callback для построения графиков и обработки взаимодействий.
-
-        Args:
-            graph_type (str): Тип графика из выпадающего списка
-            x_axis (str): Выбранная колонка для оси X
-            y_axis (str): Выбранная колонка для оси Y
-            z_axis (str): Выбранная колонка для оси Z (для 3D графиков)
-            contents (str): Содержимое загруженного файла в base64
-
-        Returns:
-            tuple: Кортеж из 4 элементов:
-                - figure: Объект графика Plotly
-                - str: Текст уведомления об ошибке (или None)
-                - dict: Стили для уведомления
-                - dict: Стили для кнопки закрытия уведомления
         """
         ctx = dash.callback_context
         trigger_id = ctx.triggered[0]['prop_id'].split('.')[0]
