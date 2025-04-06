@@ -75,6 +75,8 @@ def create_layout():
             style={'width': '100%', 'margin': '10px 0'}
         ),
 
+        dcc.Store(id='stored-data'),
+
         dcc.Dropdown(
             id='anomaly-column',
             placeholder="Выберите колонку для анализа аномалий"

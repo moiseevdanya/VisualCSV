@@ -61,17 +61,8 @@ def process_uploaded_file(contents: str) -> pd.DataFrame:
         raise ValueError(f"Ошибка обработки файла: {str(e)}")
 
 
-def detect_anomalies(df, column=None):
-    if column is None:
-        numeric_cols = df.select_dtypes(include=['number']).columns
-        if not numeric_cols.empty:
-            column = numeric_cols[0]
-        else:
-            raise ValueError("В данных нет числовых колонок")
-
-    if column not in df.columns:
-        raise ValueError(f"Колонка '{column}' не найдена в данных")
-
+def detect_anomalies(df, column):
+    """Обнаружение аномалий в указанной колонке"""
     model = IsolationForest(contamination=0.05)
     df['anomaly'] = model.fit_predict(df[[column]])
     df['anomaly'] = df['anomaly'].map({1: 0, -1: 1})  # 1=аномалия

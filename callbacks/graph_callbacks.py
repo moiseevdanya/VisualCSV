@@ -2,7 +2,7 @@ import dash
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from dash import dcc
+from dash import dcc, html
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 
@@ -19,33 +19,41 @@ def register_graph_callbacks(app):
         [Input('apply-ai-button', 'n_clicks')],
         [State('ai-analysis-type', 'value'),
          State('anomaly-column', 'value'),
-         State('upload-data', 'contents')]
+         State('stored-data', 'data')]
     )
-    def apply_ai_analysis(n_clicks, analysis_type, contents, column):
-        if n_clicks is None:
+    def apply_ai_analysis(n_clicks, analysis_type, column, stored_data):
+        if not n_clicks or not stored_data:
             raise PreventUpdate
 
-        df = process_uploaded_file(contents)
+        try:
+            df = pd.DataFrame.from_dict(stored_data)
 
-        if analysis_type == 'anomaly':
-            df = detect_anomalies(df, column)
-            return dcc.Graph(
-                figure=px.scatter(df, x='date', y='value', color='anomaly',
-                                  title='Аномалии в данных')
-            )
+            if analysis_type == 'anomaly':
+                if not column:
+                    numeric_cols = df.select_dtypes(include=['number']).columns
+                    if not numeric_cols.empty:
+                        column = numeric_cols[0]
+                    else:
+                        return "Нет числовых колонок для анализа"
 
-        elif analysis_type == 'forecast':
-            forecast = forecast_time_series(df, 'date', 'value')
-            fig = px.line(forecast, x='ds', y='yhat', title='Прогноз')
-            fig.add_scatter(x=df['date'], y=df['value'], name='Факт')
-            return dcc.Graph(figure=fig)
+                df = detect_anomalies(df, column)
+                return dcc.Graph(
+                    figure=px.scatter(df, x=df.index, y=column, color='anomaly',
+                                      title='Анализ аномалий')
+                )
 
-        elif analysis_type == 'cluster':
-            df = cluster_data(df)
-            return dcc.Graph(
-                figure=px.scatter(df, x='x_col', y='y_col', color='cluster',
-                                  title='Кластеризация данных')
-            )
+        except Exception as e:
+            return html.Div(f"Ошибка: {str(e)}", style={'color': 'red'})
+
+    @app.callback(
+        Output('anomaly-column-selector', 'options'),
+        [Input('stored-data', 'data')]
+    )
+    def update_columns(data):
+        if not data:
+            raise PreventUpdate
+        df = pd.DataFrame.from_dict(data)
+        return [{'label': col, 'value': col} for col in df.select_dtypes(include=['number']).columns]
 
     @app.callback(
         [Output('graph', 'figure'),
